@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  server:
+  fastapi_server:
     build: ./backend
     container_name: booking_service
     ports:
