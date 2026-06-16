@@ -1,1 +1,1 @@
-# appointment-service
+# booking-service

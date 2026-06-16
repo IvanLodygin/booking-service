@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  server:
+    build: ./backend
+    container_name: booking_service
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - booking-service-network
+    restart: "no"
+
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db
+    expose:
+      - "5432"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - booking-service-network
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data: 
+
+networks:
+  booking-service-network:
+    driver: bridge
