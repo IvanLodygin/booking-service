@@ -1,9 +1,10 @@
 version: '3.8'
 
 services:
-  fastapi_server:
+  api:
     build: ./backend
-    container_name: booking_service
+    container_name: booking_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     env_file:
@@ -11,31 +12,80 @@ services:
     depends_on:
       postgres_db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
-      - booking-service-network
+      - booking-network
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    container_name: booking_worker
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - booking-network
+    restart: unless-stopped
+
+  migrate:
+    build: ./backend
+    container_name: booking_migrate
+    command: alembic upgrade head
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - booking-network
     restart: "no"
 
   postgres_db:
-    image: postgres:15
-    container_name: postgres_db
+    image: postgres:15-alpine
+    container_name: booking_postgres
     expose:
       - "5432"
-    env_file:
-      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-booking_service}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-booking_service}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
-      - booking-service-network
+      - booking-network
     restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: booking_redis
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - booking-network
+    restart: always
+    volumes:
+      - redis_data:/data
+
 volumes:
-  postgres_data: 
+  postgres_data:
+  redis_data:
 
 networks:
-  booking-service-network:
+  booking-network:
     driver: bridge
